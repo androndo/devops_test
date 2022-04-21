@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/go-redis/redis/v8"
+	"github.com/julienschmidt/httprouter"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	metrics "github.com/slok/go-http-metrics/metrics/prometheus"
+	"github.com/slok/go-http-metrics/middleware"
+	httproutermiddleware "github.com/slok/go-http-metrics/middleware/httprouter"
+	"go.uber.org/zap"
 	"log"
 	"net/http"
 	"os"
-	"github.com/go-redis/redis/v8"
-	"github.com/julienschmidt/httprouter"
-	"go.uber.org/zap"
 	"time"
 )
 
@@ -34,9 +38,22 @@ func main() {
 		logger: logger,
 	}
 
+	metricsMiddleware := middleware.New(middleware.Config{
+		Recorder: metrics.NewRecorder(metrics.Config{}),
+	})
+
 	router := httprouter.New()
 
-	router.GET("/", srv.indexHandler)
+	router.GET("/", httproutermiddleware.Handler("/", srv.indexHandler, metricsMiddleware))
+
+	// Serve our metrics.
+	metricsAddr := ":8081" // todo: env
+	go func() {
+		log.Printf("metrics listening at %s", metricsAddr)
+		if err := http.ListenAndServe(metricsAddr, promhttp.Handler()); err != nil {
+			log.Panicf("error while serving metrics: %s", err)
+		}
+	}()
 
 	logger.Info("server started on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", router))
