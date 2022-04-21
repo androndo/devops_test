@@ -19,6 +19,8 @@ spec:
         image: dummy_app:dev
         ports:
         - containerPort: 8080
+        - containerPort: 8081
+          name: metrics
         env:
           - name: REDIS_ADDR
             value: ':6379'
@@ -27,10 +29,31 @@ apiVersion: v1
 kind: Service
 metadata:
   name: app-service
+  labels:
+    app: app-service
 spec:
   selector:
     app: app
   ports:
-    - protocol: TCP
+    - name: http
+      protocol: TCP
       port: 8080
       targetPort: 8080
+    - name: metrics
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-servicemonitor
+  labels:
+    release: prom
+spec:
+  selector:
+    matchLabels:
+      app: app-service
+  endpoints:
+  - port: metrics
+    interval: 15s
